@@ -1,4 +1,37 @@
 import streamlit as st
+import pandas as pd
+
+st.set_page_config(layout="wide")
+
+@st.cache_data
+def carregar_produtos():
+    try:
+        df = pd.read_csv(
+            "dados.txt",
+            sep=r"\s{2,}",   # separa por 2 ou mais espaços
+            engine="python"
+        )
+
+        # Renomear colunas para padrão do sistema
+        df = df.rename(columns={
+            "Material": "sku",
+            "DescricaoCompleta": "nome",
+            "SubGrupo": "marca",
+            "quantidade": "estoque",
+            "custoMedio": "custo_produto"
+        })
+
+        return df.to_dict(orient="records")
+
+    except Exception as e:
+        st.error(f"Erro ao carregar dados.txt: {e}")
+        return []
+
+produtos = carregar_produtos()
+
+if not produtos:
+    st.warning("Nenhum produto carregado.")
+    st.stop()
 
 st.set_page_config(layout="wide")
 
@@ -224,3 +257,4 @@ for produto in produtos_filtrados:
 
 if not produtos_filtrados:
     st.warning("Nenhum produto encontrado.")
+
