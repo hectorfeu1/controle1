@@ -12,15 +12,15 @@ fixo_rateado = 2
 custos_operacionais_pedido = 3
 
 # =========================
-# CARREGAR DADOS DO TXT
+# CARREGAR DADOS DO TXT (TAB)
 # =========================
 @st.cache_data
 def carregar_produtos():
     try:
         df = pd.read_csv(
             "dados.txt",
-            sep=r"\s{2,}",   # separa por 2 ou mais espaços
-            engine="python"
+            sep="\t",  # <<< AQUI ESTÁ A CORREÇÃO
+            encoding="utf-8"
         )
 
         df = df.rename(columns={
@@ -30,6 +30,12 @@ def carregar_produtos():
             "quantidade": "estoque",
             "custoMedio": "custo_produto"
         })
+
+        # Garantir tipos corretos
+        df["custo_produto"] = pd.to_numeric(df["custo_produto"], errors="coerce")
+        df["estoque"] = pd.to_numeric(df["estoque"], errors="coerce")
+
+        df = df.dropna(subset=["sku"])
 
         return df.to_dict(orient="records")
 
@@ -61,20 +67,9 @@ st.markdown("""
 .card-yellow { border-left: 6px solid #facc15; }
 .card-red { border-left: 6px solid #dc2626; }
 
-.kpi-title {
-    font-size: 14px;
-    opacity: 0.7;
-}
-
-.kpi-value {
-    font-size: 22px;
-    font-weight: bold;
-}
-
-.kpi-sub {
-    font-size: 13px;
-    opacity: 0.6;
-}
+.kpi-title { font-size: 14px; opacity: 0.7; }
+.kpi-value { font-size: 22px; font-weight: bold; }
+.kpi-sub { font-size: 13px; opacity: 0.6; }
 
 </style>
 """, unsafe_allow_html=True)
@@ -146,9 +141,6 @@ for produto in produtos_filtrados:
             preco_venda = preco_simulado * (1 - percentual_simulado / 100)
             taxa_extra = 0
 
-            # =========================
-            # REGRAS MARKETPLACE
-            # =========================
             if nome == "Mercado Livre":
                 tipo_anuncio = st.selectbox(
                     f"Tipo ML - {produto['sku']}",
@@ -176,10 +168,6 @@ for produto in produtos_filtrados:
                 comissao = preco_venda * dados["comissao"]
                 frete = 23
 
-            else:
-                comissao = preco_venda * dados["comissao"]
-                frete = preco_venda * dados["frete"]
-
             impostos = preco_venda * IMPOSTOS_TOTAL
             armazenagem = preco_venda * ARMAZENAGEM
 
@@ -197,9 +185,6 @@ for produto in produtos_filtrados:
             lucro = preco_venda - custo_total
             margem = (lucro / preco_venda) * 100 if preco_venda > 0 else 0
 
-            # =========================
-            # COR DA BORDA
-            # =========================
             if margem > 5:
                 classe = "card-green"
             elif margem > 0:
@@ -207,9 +192,6 @@ for produto in produtos_filtrados:
             else:
                 classe = "card-red"
 
-            # =========================
-            # CARD
-            # =========================
             st.markdown(f"""
             <div class="card {classe}">
                 <div class="kpi-title">{nome}</div>
@@ -219,9 +201,6 @@ for produto in produtos_filtrados:
             </div>
             """, unsafe_allow_html=True)
 
-            # =========================
-            # CÁLCULO EXPANDÍVEL
-            # =========================
             with st.expander("Ver cálculo detalhado"):
                 st.write(f"""
                 **Preço Base:** R$ {preco_simulado:.2f}  
@@ -233,8 +212,6 @@ for produto in produtos_filtrados:
                 **Impostos:** R$ {impostos:.2f}  
                 **Armazenagem:** R$ {armazenagem:.2f}  
                 **Taxa Extra:** R$ {taxa_extra:.2f}  
-                **Custos Fixos:** R$ {fixo_rateado + custos_operacionais_pedido:.2f}  
-                ---
                 **Custo Total:** R$ {custo_total:.2f}  
                 **Lucro Final:** R$ {lucro:.2f}  
                 """)
