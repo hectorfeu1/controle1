@@ -1,9 +1,10 @@
 import streamlit as st
+import pandas as pd
 
 st.set_page_config(layout="wide")
 
 # =========================
-# DARK BI STYLE
+# CSS DARK BI
 # =========================
 st.markdown("""
 <style>
@@ -37,7 +38,7 @@ body {
 }
 
 .kpi {
-    font-size: 26px;
+    font-size: 28px;
     font-weight: bold;
     color: #00e676;
 }
@@ -51,88 +52,96 @@ body {
 """, unsafe_allow_html=True)
 
 # =========================
-# CUSTO BASE
+# FUNÇÃO DE CARGA OTIMIZADA
 # =========================
-st.sidebar.header("⚙️ Configuração Produto")
-custo = st.sidebar.number_input("Custo do Produto", value=10.00)
+@st.cache_data
+def carregar_dados():
+    df = pd.read_csv("dados.txt", sep="\t")
+    return df
 
-st.markdown("## 📊 Simulador de Precificação BI")
+df = carregar_dados()
+
+# =========================
+# SIDEBAR PRODUTO
+# =========================
+st.sidebar.header("📦 Seleção de Produto")
+
+produto = st.sidebar.selectbox(
+    "Escolha o Produto",
+    df["DescricaoCompleta"]
+)
+
+dados_produto = df[df["DescricaoCompleta"] == produto].iloc[0]
+
+custo = float(dados_produto["custoMedio"])
+
+st.sidebar.markdown(f"**Custo Médio:** R$ {custo:.2f}")
+st.sidebar.markdown(f"**Estoque:** {int(dados_produto['quantidade'])}")
 
 # =========================
 # FUNÇÃO CALCULO
 # =========================
 def calcular_preco(custo, margem, comissao, taxa_fixa):
-    preco = (custo + taxa_fixa) / (1 - (margem/100) - (comissao/100))
-    return preco
+    return (custo + taxa_fixa) / (1 - (margem/100) - (comissao/100))
+
+st.title("📊 Simulador BI de Precificação")
 
 # =========================
-# MARKETPLACES
+# MARKETPLACES GRID
 # =========================
 col1, col2, col3 = st.columns(3)
 
-# -------------------------
-# MERCADO LIVRE
-# -------------------------
+# -------- Mercado Livre --------
 with col1:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="title">🟡 Mercado Livre</div>', unsafe_allow_html=True)
 
-    margem_ml = st.number_input("Margem % ML", value=30.0, key="ml1")
-    comissao_ml = st.number_input("Comissão % ML", value=16.0, key="ml2")
-    taxa_ml = st.number_input("Taxa Fixa ML", value=5.0, key="ml3")
+    margem_ml = st.number_input("Margem %", value=30.0, key="ml_m")
+    comissao_ml = st.number_input("Comissão %", value=16.0, key="ml_c")
+    taxa_ml = st.number_input("Taxa Fixa", value=5.0, key="ml_t")
 
     preco_ml = calcular_preco(custo, margem_ml, comissao_ml, taxa_ml)
 
-    st.markdown(f'<div class="label">Preço Ideal</div>', unsafe_allow_html=True)
+    st.markdown('<div class="label">Preço Ideal</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="kpi">R$ {preco_ml:.2f}</div>', unsafe_allow_html=True)
-
     st.markdown('</div>', unsafe_allow_html=True)
 
-
-# -------------------------
-# SHOPEE
-# -------------------------
+# -------- Shopee --------
 with col2:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="title">🟠 Shopee</div>', unsafe_allow_html=True)
 
-    margem_sh = st.number_input("Margem % Shopee", value=35.0, key="sh1")
-    comissao_sh = st.number_input("Comissão % Shopee", value=20.0, key="sh2")
-    taxa_sh = st.number_input("Taxa Fixa Shopee", value=4.0, key="sh3")
+    margem_sh = st.number_input("Margem % ", value=35.0, key="sh_m")
+    comissao_sh = st.number_input("Comissão % ", value=20.0, key="sh_c")
+    taxa_sh = st.number_input("Taxa Fixa ", value=4.0, key="sh_t")
 
     preco_sh = calcular_preco(custo, margem_sh, comissao_sh, taxa_sh)
 
-    st.markdown(f'<div class="label">Preço Ideal</div>', unsafe_allow_html=True)
+    st.markdown('<div class="label">Preço Ideal</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="kpi">R$ {preco_sh:.2f}</div>', unsafe_allow_html=True)
-
     st.markdown('</div>', unsafe_allow_html=True)
 
-
-# -------------------------
-# AMAZON
-# -------------------------
+# -------- Amazon --------
 with col3:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="title">🔵 Amazon</div>', unsafe_allow_html=True)
 
-    margem_am = st.number_input("Margem % Amazon", value=28.0, key="am1")
-    comissao_am = st.number_input("Comissão % Amazon", value=15.0, key="am2")
-    taxa_am = st.number_input("Taxa Fixa Amazon", value=6.0, key="am3")
+    margem_am = st.number_input("Margem %  ", value=28.0, key="am_m")
+    comissao_am = st.number_input("Comissão %  ", value=15.0, key="am_c")
+    taxa_am = st.number_input("Taxa Fixa  ", value=6.0, key="am_t")
 
     preco_am = calcular_preco(custo, margem_am, comissao_am, taxa_am)
 
-    st.markdown(f'<div class="label">Preço Ideal</div>', unsafe_allow_html=True)
+    st.markdown('<div class="label">Preço Ideal</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="kpi">R$ {preco_am:.2f}</div>', unsafe_allow_html=True)
-
     st.markdown('</div>', unsafe_allow_html=True)
-
 
 st.markdown("---")
 
 # =========================
-# LOJA FABI (REGRA DIFERENTE)
+# LOJA FABI
 # =========================
-st.markdown("## 🏪 Loja FABI (Venda Direta)")
+st.subheader("🏪 Loja FABI (Venda Direta)")
 
 col1, col2 = st.columns([2,1])
 
@@ -145,3 +154,15 @@ with col2:
     st.markdown('<div class="label">Preço Final</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="kpi">R$ {preco_fabi:.2f}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
+
+# =========================
+# COMPARATIVO FINAL
+# =========================
+st.markdown("## 📈 Comparativo Geral")
+
+comparativo = pd.DataFrame({
+    "Marketplace": ["Mercado Livre", "Shopee", "Amazon", "Loja FABI"],
+    "Preço Sugerido": [preco_ml, preco_sh, preco_am, preco_fabi]
+})
+
+st.dataframe(comparativo, use_container_width=True)
