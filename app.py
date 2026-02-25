@@ -4,7 +4,7 @@ import pandas as pd
 st.set_page_config(layout="wide")
 
 # =====================================================
-# CONFIGURAÇÕES GERAIS
+# CONFIGURAÇÕES
 # =====================================================
 
 NUM_PEDIDOS_MES = 10000
@@ -31,30 +31,68 @@ marketplaces = {
 }
 
 # =====================================================
-# CSS CARDS
+# CSS ESTILO BI
 # =====================================================
 
 st.markdown("""
 <style>
-.grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 18px;
+
+.kpi-card {
+    padding: 25px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #1e293b, #0f172a);
+    color: white;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    margin-bottom: 25px;
 }
-.card {
-    padding: 20px;
+
+.kpi-title {
+    font-size: 16px;
+    opacity: 0.8;
+}
+
+.kpi-value {
+    font-size: 36px;
+    font-weight: bold;
+    margin-top: 5px;
+}
+
+.market-card {
+    padding: 18px;
     border-radius: 16px;
     background-color: var(--background-color);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+    text-align: center;
 }
-.title { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
-.metric { font-size: 22px; font-weight: bold; }
-.sub { font-size: 13px; opacity: 0.7; }
+
+.market-title {
+    font-size: 14px;
+    opacity: 0.7;
+}
+
+.market-value {
+    font-size: 24px;
+    font-weight: bold;
+    margin-top: 8px;
+}
+
+.market-sub {
+    font-size: 12px;
+    opacity: 0.6;
+}
+
+.section-title {
+    font-size: 20px;
+    font-weight: 600;
+    margin-top: 10px;
+    margin-bottom: 15px;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
 # =====================================================
-# FUNÇÕES DE PREÇO IDEAL
+# FUNÇÕES
 # =====================================================
 
 def preco_ideal_fabi(custo, margem):
@@ -64,7 +102,6 @@ def preco_ideal_fabi(custo, margem):
     )
 
 def preco_ideal_marketplace(nome, custo, margem):
-
     dados = marketplaces[nome]
     fixo_rateado = CUSTOS_FIXOS_OPERACAO / NUM_PEDIDOS_MES
 
@@ -107,7 +144,7 @@ df = carregar()
 # HEADER
 # =====================================================
 
-st.title("📊 Simulador Estratégico de Preço")
+st.title("📊 Dashboard Estratégico de Preço")
 
 col1, col2 = st.columns(2)
 
@@ -131,34 +168,36 @@ produto = produto_df.iloc[0]
 st.caption(f"{produto['nome']} | Marca: {produto['marca']} | Custo: R$ {produto['custo_produto']:.2f}")
 
 # =====================================================
-# GRID DE CARDS
+# KPI PRINCIPAL – LOJA FABI
 # =====================================================
 
-cards_html = '<div class="grid">'
-
-# Loja FABI
 preco_fabi = preco_ideal_fabi(produto["custo_produto"], margem_desejada)
 
-cards_html += f"""
-<div class="card">
-    <div class="title">🏪 Loja FABI</div>
-    <div class="metric">R$ {preco_fabi:.2f}</div>
-    <div class="sub">Preço necessário para {margem_desejada:.1f}%</div>
+st.markdown(f"""
+<div class="kpi-card">
+    <div class="kpi-title">🏪 Loja FABI - Preço Ideal</div>
+    <div class="kpi-value">R$ {preco_fabi:.2f}</div>
+    <div>Margem alvo: {margem_desejada:.1f}%</div>
 </div>
-"""
+""", unsafe_allow_html=True)
 
-# Marketplaces
-for nome in marketplaces.keys():
+# =====================================================
+# MARKETPLACES LADO A LADO
+# =====================================================
+
+st.markdown('<div class="section-title">🛒 Marketplaces</div>', unsafe_allow_html=True)
+
+cols = st.columns(len(marketplaces))
+
+for i, nome in enumerate(marketplaces.keys()):
+
     preco = preco_ideal_marketplace(nome, produto["custo_produto"], margem_desejada)
 
-    cards_html += f"""
-    <div class="card">
-        <div class="title">🛒 {nome}</div>
-        <div class="metric">R$ {preco:.2f}</div>
-        <div class="sub">Preço necessário para {margem_desejada:.1f}%</div>
-    </div>
-    """
-
-cards_html += "</div>"
-
-st.markdown(cards_html, unsafe_allow_html=True)
+    with cols[i]:
+        st.markdown(f"""
+        <div class="market-card">
+            <div class="market-title">{nome}</div>
+            <div class="market-value">R$ {preco:.2f}</div>
+            <div class="market-sub">Preço para {margem_desejada:.1f}%</div>
+        </div>
+        """, unsafe_allow_html=True)
