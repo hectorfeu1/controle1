@@ -3,6 +3,17 @@ import pandas as pd
 
 st.set_page_config(layout="wide")
 
+# =========================
+# CONFIGURAÇÕES GERAIS
+# =========================
+IMPOSTOS_TOTAL = 0.12
+ARMAZENAGEM = 0.02
+fixo_rateado = 2
+custos_operacionais_pedido = 3
+
+# =========================
+# CARREGAR DADOS DO TXT
+# =========================
 @st.cache_data
 def carregar_produtos():
     try:
@@ -12,7 +23,6 @@ def carregar_produtos():
             engine="python"
         )
 
-        # Renomear colunas para padrão do sistema
         df = df.rename(columns={
             "Material": "sku",
             "DescricaoCompleta": "nome",
@@ -33,44 +43,8 @@ if not produtos:
     st.warning("Nenhum produto carregado.")
     st.stop()
 
-st.set_page_config(layout="wide")
-
 # =========================
-# CONFIGURAÇÕES
-# =========================
-IMPOSTOS_TOTAL = 0.12
-ARMAZENAGEM = 0.02
-fixo_rateado = 2
-custos_operacionais_pedido = 3
-
-# =========================
-# BASE DE PRODUTOS
-# =========================
-produtos = [
-    {
-        "sku": "CR300",
-        "nome": "Creatina 300g",
-        "marca": "Growth",
-        "estoque": 42,
-        "custo_produto": 45
-    },
-    {
-        "sku": "WH900",
-        "nome": "Whey Protein 900g",
-        "marca": "Integral",
-        "estoque": 18,
-        "custo_produto": 72
-    }
-]
-
-marketplaces = {
-    "Mercado Livre": {"comissao": 0.16, "frete": 23},
-    "Shopee": {"comissao": 0.14, "frete": 0},
-    "Amazon": {"comissao": 0.15, "frete": 23}
-}
-
-# =========================
-# CSS DASHBOARD
+# CSS DASHBOARD LIMPO
 # =========================
 st.markdown("""
 <style>
@@ -80,7 +54,7 @@ st.markdown("""
     border-radius: 14px;
     margin-bottom: 15px;
     background-color: var(--background-color);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
 }
 
 .card-green { border-left: 6px solid #16a34a; }
@@ -106,12 +80,21 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================
+# MARKETPLACES
+# =========================
+marketplaces = {
+    "Mercado Livre": {"comissao": 0.16, "frete": 23},
+    "Shopee": {"comissao": 0.14, "frete": 0},
+    "Amazon": {"comissao": 0.15, "frete": 23}
+}
+
+# =========================
 # TÍTULO
 # =========================
 st.title("📊 Simulador Inteligente de Margem")
 
 # =========================
-# FILTROS DE BUSCA
+# FILTROS
 # =========================
 col1, col2, col3, col4 = st.columns(4)
 
@@ -130,19 +113,23 @@ with col4:
 margem_desejada = st.number_input("🎯 Margem Desejada (%)", value=5.0)
 
 # =========================
-# FILTRAGEM
+# FILTRAR PRODUTOS
 # =========================
 produtos_filtrados = []
 
 for p in produtos:
-    if busca_sku and busca_sku.lower() not in p["sku"].lower():
+    if busca_sku and busca_sku.lower() not in str(p["sku"]).lower():
         continue
-    if busca_nome and busca_nome.lower() not in p["nome"].lower():
+    if busca_nome and busca_nome.lower() not in str(p["nome"]).lower():
         continue
     produtos_filtrados.append(p)
 
+if not produtos_filtrados:
+    st.warning("Nenhum produto encontrado.")
+    st.stop()
+
 # =========================
-# LOOP PRODUTOS
+# LOOP PRINCIPAL
 # =========================
 for produto in produtos_filtrados:
 
@@ -156,15 +143,12 @@ for produto in produtos_filtrados:
 
         with cols[i]:
 
-            # Aplicar desconto simulado
             preco_venda = preco_simulado * (1 - percentual_simulado / 100)
-
             taxa_extra = 0
 
             # =========================
             # REGRAS MARKETPLACE
             # =========================
-
             if nome == "Mercado Livre":
                 tipo_anuncio = st.selectbox(
                     f"Tipo ML - {produto['sku']}",
@@ -200,7 +184,7 @@ for produto in produtos_filtrados:
             armazenagem = preco_venda * ARMAZENAGEM
 
             custo_total = (
-                produto["custo_produto"]
+                float(produto["custo_produto"])
                 + comissao
                 + frete
                 + impostos
@@ -243,7 +227,7 @@ for produto in produtos_filtrados:
                 **Preço Base:** R$ {preco_simulado:.2f}  
                 **Desconto Aplicado:** {percentual_simulado:.2f}%  
                 **Preço Final:** R$ {preco_venda:.2f}  
-                **Custo Produto:** R$ {produto['custo_produto']:.2f}  
+                **Custo Produto:** R$ {float(produto['custo_produto']):.2f}  
                 **Comissão:** R$ {comissao:.2f}  
                 **Frete:** R$ {frete:.2f}  
                 **Impostos:** R$ {impostos:.2f}  
@@ -254,7 +238,3 @@ for produto in produtos_filtrados:
                 **Custo Total:** R$ {custo_total:.2f}  
                 **Lucro Final:** R$ {lucro:.2f}  
                 """)
-
-if not produtos_filtrados:
-    st.warning("Nenhum produto encontrado.")
-
