@@ -4,7 +4,7 @@ import pandas as pd
 st.set_page_config(layout="wide")
 
 # =========================
-# CONFIGURAÇÕES GERAIS
+# CONFIGURAÇÕES
 # =========================
 IMPOSTOS_TOTAL = 0.12
 ARMAZENAGEM = 0.02
@@ -12,45 +12,38 @@ fixo_rateado = 2
 custos_operacionais_pedido = 3
 
 # =========================
-# CARREGAR DADOS DO TXT (TAB)
+# CARREGAMENTO ULTRA OTIMIZADO
 # =========================
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def carregar_produtos():
-    try:
-        df = pd.read_csv(
-            "dados.txt",
-            sep="\t",  # <<< AQUI ESTÁ A CORREÇÃO
-            encoding="utf-8"
-        )
+    df = pd.read_csv(
+        "dados.txt",
+        sep="\t",
+        encoding="utf-8",
+        dtype={
+            "Material": str,
+            "DescricaoCompleta": str,
+            "SubGrupo": str
+        }
+    )
 
-        df = df.rename(columns={
-            "Material": "sku",
-            "DescricaoCompleta": "nome",
-            "SubGrupo": "marca",
-            "quantidade": "estoque",
-            "custoMedio": "custo_produto"
-        })
+    df = df.rename(columns={
+        "Material": "sku",
+        "DescricaoCompleta": "nome",
+        "SubGrupo": "marca",
+        "quantidade": "estoque",
+        "custoMedio": "custo_produto"
+    })
 
-        # Garantir tipos corretos
-        df["custo_produto"] = pd.to_numeric(df["custo_produto"], errors="coerce")
-        df["estoque"] = pd.to_numeric(df["estoque"], errors="coerce")
+    df["custo_produto"] = pd.to_numeric(df["custo_produto"], errors="coerce")
+    df["estoque"] = pd.to_numeric(df["estoque"], errors="coerce")
 
-        df = df.dropna(subset=["sku"])
+    return df
 
-        return df.to_dict(orient="records")
-
-    except Exception as e:
-        st.error(f"Erro ao carregar dados.txt: {e}")
-        return []
-
-produtos = carregar_produtos()
-
-if not produtos:
-    st.warning("Nenhum produto carregado.")
-    st.stop()
+df_produtos = carregar_produtos()
 
 # =========================
-# CSS DASHBOARD LIMPO
+# CSS DASHBOARD
 # =========================
 st.markdown("""
 <style>
@@ -89,9 +82,9 @@ marketplaces = {
 st.title("📊 Simulador Inteligente de Margem")
 
 # =========================
-# FILTROS
+# BUSCA (OBRIGATÓRIA)
 # =========================
-col1, col2, col3, col4 = st.columns(4)
+col1, col2 = st.columns(2)
 
 with col1:
     busca_sku = st.text_input("🔎 Procurar SKU")
@@ -99,119 +92,134 @@ with col1:
 with col2:
     busca_nome = st.text_input("🔎 Procurar Nome")
 
-with col3:
-    preco_simulado = st.number_input("💰 Preço de Venda Simulado", value=100.0)
-
-with col4:
-    percentual_simulado = st.number_input("% Venda Simulado (desconto)", value=0.0)
-
-margem_desejada = st.number_input("🎯 Margem Desejada (%)", value=5.0)
-
-# =========================
-# FILTRAR PRODUTOS
-# =========================
-produtos_filtrados = []
-
-for p in produtos:
-    if busca_sku and busca_sku.lower() not in str(p["sku"]).lower():
-        continue
-    if busca_nome and busca_nome.lower() not in str(p["nome"]).lower():
-        continue
-    produtos_filtrados.append(p)
-
-if not produtos_filtrados:
-    st.warning("Nenhum produto encontrado.")
+if not busca_sku and not busca_nome:
+    st.info("Digite um SKU ou Nome para iniciar a busca.")
     st.stop()
 
 # =========================
-# LOOP PRINCIPAL
+# FILTRO OTIMIZADO
 # =========================
-for produto in produtos_filtrados:
+filtro = df_produtos
 
-    st.markdown("---")
-    st.subheader(f"{produto['nome']} ({produto['sku']})")
-    st.caption(f"Marca: {produto['marca']} | Estoque: {produto['estoque']} unidades")
+if busca_sku:
+    filtro = filtro[filtro["sku"].str.contains(busca_sku, case=False, na=False)]
 
-    cols = st.columns(len(marketplaces))
+if busca_nome:
+    filtro = filtro[filtro["nome"].str.contains(busca_nome, case=False, na=False)]
 
-    for i, (nome, dados) in enumerate(marketplaces.items()):
+filtro = filtro.head(1)
 
-        with cols[i]:
+if filtro.empty:
+    st.warning("Produto não encontrado.")
+    st.stop()
 
-            preco_venda = preco_simulado * (1 - percentual_simulado / 100)
-            taxa_extra = 0
+produto = filtro.iloc[0]
 
-            if nome == "Mercado Livre":
-                tipo_anuncio = st.selectbox(
-                    f"Tipo ML - {produto['sku']}",
-                    ["C - Classico", "P - Premium"],
-                    key=f"{produto['sku']}_ml"
-                )
-                comissao = preco_venda * (0.12 if tipo_anuncio.startswith("C") else 0.17)
-                if preco_venda < 79:
-                    taxa_extra = 6.75
-                frete = 23
+# =========================
+# DADOS PRODUTO
+# =========================
+st.markdown("---")
+st.subheader(f"{produto['nome']} ({produto['sku']})")
+st.caption(f"Marca: {produto['marca']} | Estoque: {int(produto['estoque'])} unidades")
 
-            elif nome == "Shopee":
-                if preco_venda <= 79.99:
-                    comissao = preco_venda * 0.20
-                    taxa_extra = 4
-                elif preco_venda <= 99.99:
-                    comissao = preco_venda * 0.14
-                    taxa_extra = 16
-                else:
-                    comissao = preco_venda * 0.14
-                    taxa_extra = 26
-                frete = 0
+# =========================
+# SIMULAÇÃO
+# =========================
+colA, colB, colC = st.columns(3)
 
-            elif nome == "Amazon":
-                comissao = preco_venda * dados["comissao"]
-                frete = 23
+with colA:
+    preco_simulado = st.number_input("💰 Preço de Venda Simulado", value=100.0)
 
-            impostos = preco_venda * IMPOSTOS_TOTAL
-            armazenagem = preco_venda * ARMAZENAGEM
+with colB:
+    percentual_simulado = st.number_input("% Venda Simulado (desconto)", value=0.0)
 
-            custo_total = (
-                float(produto["custo_produto"])
-                + comissao
-                + frete
-                + impostos
-                + armazenagem
-                + fixo_rateado
-                + custos_operacionais_pedido
-                + taxa_extra
+with colC:
+    margem_desejada = st.number_input("🎯 Margem Desejada (%)", value=5.0)
+
+preco_venda = preco_simulado * (1 - percentual_simulado / 100)
+
+# =========================
+# CARDS MARKETPLACES
+# =========================
+cols = st.columns(len(marketplaces))
+
+for i, (nome, dados) in enumerate(marketplaces.items()):
+
+    with cols[i]:
+
+        taxa_extra = 0
+
+        if nome == "Mercado Livre":
+            tipo_anuncio = st.selectbox(
+                "Tipo ML",
+                ["C - Classico", "P - Premium"],
+                key="ml_tipo"
             )
+            comissao = preco_venda * (0.12 if tipo_anuncio.startswith("C") else 0.17)
+            if preco_venda < 79:
+                taxa_extra = 6.75
+            frete = 23
 
-            lucro = preco_venda - custo_total
-            margem = (lucro / preco_venda) * 100 if preco_venda > 0 else 0
-
-            if margem > 5:
-                classe = "card-green"
-            elif margem > 0:
-                classe = "card-yellow"
+        elif nome == "Shopee":
+            if preco_venda <= 79.99:
+                comissao = preco_venda * 0.20
+                taxa_extra = 4
+            elif preco_venda <= 99.99:
+                comissao = preco_venda * 0.14
+                taxa_extra = 16
             else:
-                classe = "card-red"
+                comissao = preco_venda * 0.14
+                taxa_extra = 26
+            frete = 0
 
-            st.markdown(f"""
-            <div class="card {classe}">
-                <div class="kpi-title">{nome}</div>
-                <div class="kpi-value">{margem:.2f}%</div>
-                <div class="kpi-sub">Lucro: R$ {lucro:.2f}</div>
-                <div class="kpi-sub">Preço Final: R$ {preco_venda:.2f}</div>
-            </div>
-            """, unsafe_allow_html=True)
+        elif nome == "Amazon":
+            comissao = preco_venda * dados["comissao"]
+            frete = 23
 
-            with st.expander("Ver cálculo detalhado"):
-                st.write(f"""
-                **Preço Base:** R$ {preco_simulado:.2f}  
-                **Desconto Aplicado:** {percentual_simulado:.2f}%  
-                **Preço Final:** R$ {preco_venda:.2f}  
-                **Custo Produto:** R$ {float(produto['custo_produto']):.2f}  
-                **Comissão:** R$ {comissao:.2f}  
-                **Frete:** R$ {frete:.2f}  
-                **Impostos:** R$ {impostos:.2f}  
-                **Armazenagem:** R$ {armazenagem:.2f}  
-                **Taxa Extra:** R$ {taxa_extra:.2f}  
-                **Custo Total:** R$ {custo_total:.2f}  
-                **Lucro Final:** R$ {lucro:.2f}  
-                """)
+        impostos = preco_venda * IMPOSTOS_TOTAL
+        armazenagem = preco_venda * ARMAZENAGEM
+
+        custo_total = (
+            float(produto["custo_produto"])
+            + comissao
+            + frete
+            + impostos
+            + armazenagem
+            + fixo_rateado
+            + custos_operacionais_pedido
+            + taxa_extra
+        )
+
+        lucro = preco_venda - custo_total
+        margem = (lucro / preco_venda) * 100 if preco_venda > 0 else 0
+
+        if margem > 5:
+            classe = "card-green"
+        elif margem > 0:
+            classe = "card-yellow"
+        else:
+            classe = "card-red"
+
+        st.markdown(f"""
+        <div class="card {classe}">
+            <div class="kpi-title">{nome}</div>
+            <div class="kpi-value">{margem:.2f}%</div>
+            <div class="kpi-sub">Lucro: R$ {lucro:.2f}</div>
+            <div class="kpi-sub">Preço Final: R$ {preco_venda:.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        with st.expander("Ver cálculo detalhado"):
+            st.write(f"""
+            **Preço Base:** R$ {preco_simulado:.2f}  
+            **Desconto:** {percentual_simulado:.2f}%  
+            **Preço Final:** R$ {preco_venda:.2f}  
+            **Custo Produto:** R$ {float(produto['custo_produto']):.2f}  
+            **Comissão:** R$ {comissao:.2f}  
+            **Frete:** R$ {frete:.2f}  
+            **Impostos:** R$ {impostos:.2f}  
+            **Armazenagem:** R$ {armazenagem:.2f}  
+            **Taxa Extra:** R$ {taxa_extra:.2f}  
+            **Custo Total:** R$ {custo_total:.2f}  
+            **Lucro Final:** R$ {lucro:.2f}  
+            """)
