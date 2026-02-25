@@ -1,203 +1,147 @@
 import streamlit as st
-import pandas as pd
 
 st.set_page_config(layout="wide")
 
-# =====================================================
-# CONFIGURAÇÕES
-# =====================================================
-
-NUM_PEDIDOS_MES = 10000
-CUSTO_SITE_FIXO_MENSAL = 5000.0
-CUSTOS_FIXOS_OPERACAO = 382 + 660 + 349 + 1945.38 + 17560 + 17000
-CUSTO_FIXO_UNITARIO = (CUSTOS_FIXOS_OPERACAO + CUSTO_SITE_FIXO_MENSAL) / NUM_PEDIDOS_MES
-CUSTO_OPERACIONAL_PEDIDO = 2.625
-
-COMISSAO_FABI = 0.015
-ARMAZENAGEM = 0.018
-
-ICMS = 0.0125
-DIFAL = 0.0655
-PIS_COFINS = 0.0925
-IMPOSTOS_TOTAL = ICMS + DIFAL + PIS_COFINS
-
-marketplaces = {
-    "Amazon": {"comissao": 0.15, "frete": 23},
-    "Americanas": {"comissao": 0.17, "frete": 0.08},
-    "Magalu": {"comissao": 0.148, "frete": 0.08},
-    "Mercado Livre": {"comissao": 0.17, "frete": 23},
-    "Olist": {"comissao": 0.19, "frete": 0.11},
-    "Shopee": {"comissao": 0.14, "frete": 0},
-}
-
-# =====================================================
-# CSS ESTILO BI
-# =====================================================
-
+# =========================
+# DARK BI STYLE
+# =========================
 st.markdown("""
 <style>
 
-.kpi-card {
+body {
+    background-color: #0e1117;
+}
+
+.main {
+    background-color: #0e1117;
+}
+
+.block-container {
+    padding-top: 2rem;
+}
+
+.card {
+    background-color: #1c1f26;
     padding: 25px;
-    border-radius: 18px;
-    background: linear-gradient(135deg, #1e293b, #0f172a);
+    border-radius: 14px;
+    border: 1px solid #2a2f3a;
+    box-shadow: 0px 4px 20px rgba(0,0,0,0.4);
+    margin-bottom: 20px;
+}
+
+.title {
+    font-size: 18px;
+    font-weight: bold;
     color: white;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
-    margin-bottom: 25px;
-}
-
-.kpi-title {
-    font-size: 16px;
-    opacity: 0.8;
-}
-
-.kpi-value {
-    font-size: 36px;
-    font-weight: bold;
-    margin-top: 5px;
-}
-
-.market-card {
-    padding: 18px;
-    border-radius: 16px;
-    background-color: var(--background-color);
-    box-shadow: 0 4px 14px rgba(0,0,0,0.06);
-    text-align: center;
-}
-
-.market-title {
-    font-size: 14px;
-    opacity: 0.7;
-}
-
-.market-value {
-    font-size: 24px;
-    font-weight: bold;
-    margin-top: 8px;
-}
-
-.market-sub {
-    font-size: 12px;
-    opacity: 0.6;
-}
-
-.section-title {
-    font-size: 20px;
-    font-weight: 600;
-    margin-top: 10px;
     margin-bottom: 15px;
+}
+
+.kpi {
+    font-size: 26px;
+    font-weight: bold;
+    color: #00e676;
+}
+
+.label {
+    color: #9aa4b2;
+    font-size: 13px;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
-# =====================================================
-# FUNÇÕES
-# =====================================================
+# =========================
+# CUSTO BASE
+# =========================
+st.sidebar.header("⚙️ Configuração Produto")
+custo = st.sidebar.number_input("Custo do Produto", value=10.00)
 
-def preco_ideal_fabi(custo, margem):
-    return (
-        (custo + CUSTO_FIXO_UNITARIO + CUSTO_OPERACIONAL_PEDIDO)
-        / (1 - COMISSAO_FABI - ARMAZENAGEM - IMPOSTOS_TOTAL - margem/100)
-    )
+st.markdown("## 📊 Simulador de Precificação BI")
 
-def preco_ideal_marketplace(nome, custo, margem):
-    dados = marketplaces[nome]
-    fixo_rateado = CUSTOS_FIXOS_OPERACAO / NUM_PEDIDOS_MES
+# =========================
+# FUNÇÃO CALCULO
+# =========================
+def calcular_preco(custo, margem, comissao, taxa_fixa):
+    preco = (custo + taxa_fixa) / (1 - (margem/100) - (comissao/100))
+    return preco
 
-    if nome == "Amazon":
-        taxa_percentual = dados["comissao"] + IMPOSTOS_TOTAL + ARMAZENAGEM
-        taxa_fixa = dados["frete"] + fixo_rateado + CUSTO_OPERACIONAL_PEDIDO
+# =========================
+# MARKETPLACES
+# =========================
+col1, col2, col3 = st.columns(3)
 
-    elif nome in ["Americanas", "Magalu", "Olist"]:
-        taxa_percentual = dados["comissao"] + dados["frete"] + IMPOSTOS_TOTAL + ARMAZENAGEM
-        taxa_fixa = fixo_rateado + CUSTO_OPERACIONAL_PEDIDO
+# -------------------------
+# MERCADO LIVRE
+# -------------------------
+with col1:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="title">🟡 Mercado Livre</div>', unsafe_allow_html=True)
 
-    elif nome == "Mercado Livre":
-        taxa_percentual = 0.17 + IMPOSTOS_TOTAL + ARMAZENAGEM
-        taxa_fixa = 23 + fixo_rateado + CUSTO_OPERACIONAL_PEDIDO
+    margem_ml = st.number_input("Margem % ML", value=30.0, key="ml1")
+    comissao_ml = st.number_input("Comissão % ML", value=16.0, key="ml2")
+    taxa_ml = st.number_input("Taxa Fixa ML", value=5.0, key="ml3")
 
-    elif nome == "Shopee":
-        taxa_percentual = 0.14 + IMPOSTOS_TOTAL + ARMAZENAGEM
-        taxa_fixa = fixo_rateado + CUSTO_OPERACIONAL_PEDIDO + 26
+    preco_ml = calcular_preco(custo, margem_ml, comissao_ml, taxa_ml)
 
-    return (custo + taxa_fixa) / (1 - taxa_percentual - margem/100)
+    st.markdown(f'<div class="label">Preço Ideal</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="kpi">R$ {preco_ml:.2f}</div>', unsafe_allow_html=True)
 
-# =====================================================
-# CARREGAMENTO
-# =====================================================
+    st.markdown('</div>', unsafe_allow_html=True)
 
-@st.cache_data
-def carregar():
-    df = pd.read_csv("dados.txt", sep="\t", encoding="utf-8")
-    df = df.rename(columns={
-        "Material": "sku",
-        "DescricaoCompleta": "nome",
-        "SubGrupo": "marca",
-        "custoMedio": "custo_produto"
-    })
-    return df
 
-df = carregar()
+# -------------------------
+# SHOPEE
+# -------------------------
+with col2:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="title">🟠 Shopee</div>', unsafe_allow_html=True)
 
-# =====================================================
-# HEADER
-# =====================================================
+    margem_sh = st.number_input("Margem % Shopee", value=35.0, key="sh1")
+    comissao_sh = st.number_input("Comissão % Shopee", value=20.0, key="sh2")
+    taxa_sh = st.number_input("Taxa Fixa Shopee", value=4.0, key="sh3")
 
-st.title("📊 Dashboard Estratégico de Preço")
+    preco_sh = calcular_preco(custo, margem_sh, comissao_sh, taxa_sh)
 
-col1, col2 = st.columns(2)
+    st.markdown(f'<div class="label">Preço Ideal</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="kpi">R$ {preco_sh:.2f}</div>', unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# -------------------------
+# AMAZON
+# -------------------------
+with col3:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="title">🔵 Amazon</div>', unsafe_allow_html=True)
+
+    margem_am = st.number_input("Margem % Amazon", value=28.0, key="am1")
+    comissao_am = st.number_input("Comissão % Amazon", value=15.0, key="am2")
+    taxa_am = st.number_input("Taxa Fixa Amazon", value=6.0, key="am3")
+
+    preco_am = calcular_preco(custo, margem_am, comissao_am, taxa_am)
+
+    st.markdown(f'<div class="label">Preço Ideal</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="kpi">R$ {preco_am:.2f}</div>', unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+st.markdown("---")
+
+# =========================
+# LOJA FABI (REGRA DIFERENTE)
+# =========================
+st.markdown("## 🏪 Loja FABI (Venda Direta)")
+
+col1, col2 = st.columns([2,1])
 
 with col1:
-    sku = st.text_input("Buscar SKU")
+    margem_fabi = st.number_input("Margem % Loja FABI", value=40.0)
 
 with col2:
-    margem_desejada = st.number_input("Margem desejada (%)", value=20.0)
-
-if not sku:
-    st.stop()
-
-produto_df = df[df["sku"].astype(str).str.contains(sku, case=False)]
-
-if produto_df.empty:
-    st.warning("Produto não encontrado")
-    st.stop()
-
-produto = produto_df.iloc[0]
-
-st.caption(f"{produto['nome']} | Marca: {produto['marca']} | Custo: R$ {produto['custo_produto']:.2f}")
-
-# =====================================================
-# KPI PRINCIPAL – LOJA FABI
-# =====================================================
-
-preco_fabi = preco_ideal_fabi(produto["custo_produto"], margem_desejada)
-
-st.markdown(f"""
-<div class="kpi-card">
-    <div class="kpi-title">🏪 Loja FABI - Preço Ideal</div>
-    <div class="kpi-value">R$ {preco_fabi:.2f}</div>
-    <div>Margem alvo: {margem_desejada:.1f}%</div>
-</div>
-""", unsafe_allow_html=True)
-
-# =====================================================
-# MARKETPLACES LADO A LADO
-# =====================================================
-
-st.markdown('<div class="section-title">🛒 Marketplaces</div>', unsafe_allow_html=True)
-
-cols = st.columns(len(marketplaces))
-
-for i, nome in enumerate(marketplaces.keys()):
-
-    preco = preco_ideal_marketplace(nome, produto["custo_produto"], margem_desejada)
-
-    with cols[i]:
-        st.markdown(f"""
-        <div class="market-card">
-            <div class="market-title">{nome}</div>
-            <div class="market-value">R$ {preco:.2f}</div>
-            <div class="market-sub">Preço para {margem_desejada:.1f}%</div>
-        </div>
-        """, unsafe_allow_html=True)
+    preco_fabi = custo * (1 + margem_fabi/100)
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="label">Preço Final</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="kpi">R$ {preco_fabi:.2f}</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
