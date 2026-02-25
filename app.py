@@ -8,8 +8,6 @@ st.set_page_config(layout="wide")
 # =====================================================
 
 NUM_PEDIDOS_MES = 10000
-MARGEM_PADRAO = 20.0
-
 CUSTO_SITE_FIXO_MENSAL = 5000.0
 CUSTOS_FIXOS_OPERACAO = 382 + 660 + 349 + 1945.38 + 17560 + 17000
 CUSTO_FIXO_UNITARIO = (CUSTOS_FIXOS_OPERACAO + CUSTO_SITE_FIXO_MENSAL) / NUM_PEDIDOS_MES
@@ -33,24 +31,41 @@ marketplaces = {
 }
 
 # =====================================================
-# CSS DASHBOARD
+# CSS GRID PROFISSIONAL
 # =====================================================
 
 st.markdown("""
 <style>
+
+.section-title {
+    font-size: 20px;
+    font-weight: 600;
+    margin-top: 25px;
+    margin-bottom: 15px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 15px;
+}
+
 .card {
     padding: 18px;
     border-radius: 14px;
-    margin-bottom: 15px;
     background-color: var(--background-color);
     box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
+
+.card-best { border-left: 6px solid #2563eb; }
 .card-green { border-left: 6px solid #16a34a; }
 .card-yellow { border-left: 6px solid #facc15; }
 .card-red { border-left: 6px solid #dc2626; }
+
 .kpi-title { font-size: 14px; opacity: 0.7; }
 .kpi-value { font-size: 22px; font-weight: bold; }
 .kpi-sub { font-size: 13px; opacity: 0.6; }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -58,7 +73,7 @@ st.markdown("""
 # FUNÇÕES
 # =====================================================
 
-def margem_fabi(preco, custo):
+def calcular_fabi(preco, custo):
     lucro = (
         preco
         - custo
@@ -70,12 +85,64 @@ def margem_fabi(preco, custo):
     )
     return lucro, (lucro / preco) * 100
 
+
+def calcular_marketplace(nome, preco, custo):
+    taxa_extra = 0
+    fixo_rateado = CUSTOS_FIXOS_OPERACAO / NUM_PEDIDOS_MES
+    dados = marketplaces[nome]
+
+    if nome == "Mercado Livre":
+        comissao = preco * 0.17
+        if preco < 79:
+            taxa_extra = 6.75
+        frete = 23
+
+    elif nome == "Shopee":
+        if preco <= 79.99:
+            comissao = preco * 0.20
+            taxa_extra = 4
+        elif preco <= 99.99:
+            comissao = preco * 0.14
+            taxa_extra = 16
+        else:
+            comissao = preco * 0.14
+            taxa_extra = 26
+        frete = 0
+
+    elif nome == "Amazon":
+        comissao = preco * dados["comissao"]
+        frete = 23
+
+    else:
+        comissao = preco * dados["comissao"]
+        frete = preco * dados["frete"]
+
+    impostos = preco * IMPOSTOS_TOTAL
+    armazenagem = preco * ARMAZENAGEM
+
+    custo_total = (
+        custo
+        + comissao
+        + frete
+        + impostos
+        + armazenagem
+        + fixo_rateado
+        + CUSTO_OPERACIONAL_PEDIDO
+        + taxa_extra
+    )
+
+    lucro = preco - custo_total
+    margem = (lucro / preco) * 100
+
+    return lucro, margem
+
+
 # =====================================================
 # CARREGAMENTO
 # =====================================================
 
 @st.cache_data
-def carregar_produtos():
+def carregar():
     df = pd.read_csv("dados.txt", sep="\t", encoding="utf-8")
     df = df.rename(columns={
         "Material": "sku",
@@ -85,26 +152,26 @@ def carregar_produtos():
     })
     return df
 
-df_produtos = carregar_produtos()
+df = carregar()
 
 # =====================================================
-# TÍTULO
+# HEADER
 # =====================================================
 
-st.title("📊 Simulador Estratégico de Margem")
+st.title("📊 Dashboard Estratégico de Margem")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    busca_sku = st.text_input("🔎 Buscar SKU")
+    sku = st.text_input("Buscar SKU")
 
 with col2:
-    preco_venda = st.number_input("💰 Preço de Venda", value=100.0)
+    preco_venda = st.number_input("Preço de Venda", value=100.0)
 
-if not busca_sku:
+if not sku:
     st.stop()
 
-produto_df = df_produtos[df_produtos["sku"].astype(str).str.contains(busca_sku, case=False)]
+produto_df = df[df["sku"].astype(str).str.contains(sku, case=False)]
 
 if produto_df.empty:
     st.warning("Produto não encontrado")
@@ -112,95 +179,63 @@ if produto_df.empty:
 
 produto = produto_df.iloc[0]
 
-st.subheader(f"{produto['nome']} ({produto['sku']})")
-st.caption(f"Marca: {produto['marca']} | Custo: R$ {produto['custo_produto']:.2f}")
+st.caption(f"{produto['nome']} | Marca: {produto['marca']} | Custo: R$ {produto['custo_produto']:.2f}")
 
 # =====================================================
-# CARDS
+# LOJA FABI
 # =====================================================
 
-st.markdown("---")
+st.markdown('<div class="section-title">🏪 Loja FABI</div>', unsafe_allow_html=True)
 
-canais = ["Loja FABI"] + list(marketplaces.keys())
-cols = st.columns(len(canais))
+lucro_fabi, margem_fabi = calcular_fabi(preco_venda, produto["custo_produto"])
 
-for i, canal in enumerate(canais):
+classe_fabi = "card-green" if margem_fabi > 10 else "card-yellow" if margem_fabi > 0 else "card-red"
 
-    with cols[i]:
+st.markdown(f"""
+<div class="grid">
+    <div class="card {classe_fabi}">
+        <div class="kpi-title">Loja FABI</div>
+        <div class="kpi-value">{margem_fabi:.2f}%</div>
+        <div class="kpi-sub">Lucro: R$ {lucro_fabi:.2f}</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-        taxa_extra = 0
+# =====================================================
+# MARKETPLACES GRID
+# =====================================================
 
-        if canal == "Loja FABI":
+st.markdown('<div class="section-title">🛒 Marketplaces</div>', unsafe_allow_html=True)
 
-            lucro, margem = margem_fabi(preco_venda, produto["custo_produto"])
+resultados = []
 
-        else:
+for nome in marketplaces.keys():
+    lucro, margem = calcular_marketplace(nome, preco_venda, produto["custo_produto"])
+    resultados.append((nome, lucro, margem))
 
-            dados = marketplaces[canal]
-            fixo_rateado = CUSTOS_FIXOS_OPERACAO / NUM_PEDIDOS_MES
+melhor = max(resultados, key=lambda x: x[2])[0]
 
-            # Mercado Livre
-            if canal == "Mercado Livre":
-                tipo = st.selectbox(
-                    f"Tipo ML",
-                    ["Classico", "Premium"],
-                    key="ml_tipo"
-                )
-                comissao = preco_venda * (0.12 if tipo == "Classico" else 0.17)
-                if preco_venda < 79:
-                    taxa_extra = 6.75
-                frete = 23
+cards_html = '<div class="grid">'
 
-            # Shopee
-            elif canal == "Shopee":
-                if preco_venda <= 79.99:
-                    comissao = preco_venda * 0.20
-                    taxa_extra = 4
-                elif preco_venda <= 99.99:
-                    comissao = preco_venda * 0.14
-                    taxa_extra = 16
-                else:
-                    comissao = preco_venda * 0.14
-                    taxa_extra = 26
-                frete = 0
+for nome, lucro, margem in resultados:
 
-            elif canal == "Amazon":
-                comissao = preco_venda * dados["comissao"]
-                frete = 23
+    if nome == melhor:
+        classe = "card-best"
+    elif margem > 10:
+        classe = "card-green"
+    elif margem > 0:
+        classe = "card-yellow"
+    else:
+        classe = "card-red"
 
-            else:
-                comissao = preco_venda * dados["comissao"]
-                frete = preco_venda * dados["frete"]
+    cards_html += f"""
+    <div class="card {classe}">
+        <div class="kpi-title">{nome}</div>
+        <div class="kpi-value">{margem:.2f}%</div>
+        <div class="kpi-sub">Lucro: R$ {lucro:.2f}</div>
+    </div>
+    """
 
-            impostos = preco_venda * IMPOSTOS_TOTAL
-            armazenagem = preco_venda * ARMAZENAGEM
+cards_html += "</div>"
 
-            custo_total = (
-                produto["custo_produto"]
-                + comissao
-                + frete
-                + impostos
-                + armazenagem
-                + fixo_rateado
-                + CUSTO_OPERACIONAL_PEDIDO
-                + taxa_extra
-            )
-
-            lucro = preco_venda - custo_total
-            margem = (lucro / preco_venda) * 100
-
-        # Cor do card
-        if margem > 10:
-            classe = "card-green"
-        elif margem > 0:
-            classe = "card-yellow"
-        else:
-            classe = "card-red"
-
-        st.markdown(f"""
-        <div class="card {classe}">
-            <div class="kpi-title">{canal}</div>
-            <div class="kpi-value">{margem:.2f}%</div>
-            <div class="kpi-sub">Lucro: R$ {lucro:.2f}</div>
-        </div>
-        """, unsafe_allow_html=True)
+st.markdown(cards_html, unsafe_allow_html=True)
