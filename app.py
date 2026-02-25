@@ -1,179 +1,226 @@
 import streamlit as st
-import pandas as pd
-import os
 
-# =====================================================
-# CONFIGURAÇÃO
-# =====================================================
+st.set_page_config(layout="wide")
 
-st.set_page_config(
-    page_title="Precificação Estratégica",
-    layout="wide"
-)
+# =========================
+# CONFIGURAÇÕES
+# =========================
+IMPOSTOS_TOTAL = 0.12
+ARMAZENAGEM = 0.02
+fixo_rateado = 2
+custos_operacionais_pedido = 3
 
-# =====================================================
-# ESTILO DASHBOARD
-# =====================================================
+# =========================
+# BASE DE PRODUTOS
+# =========================
+produtos = [
+    {
+        "sku": "CR300",
+        "nome": "Creatina 300g",
+        "marca": "Growth",
+        "estoque": 42,
+        "custo_produto": 45
+    },
+    {
+        "sku": "WH900",
+        "nome": "Whey Protein 900g",
+        "marca": "Integral",
+        "estoque": 18,
+        "custo_produto": 72
+    }
+]
 
+marketplaces = {
+    "Mercado Livre": {"comissao": 0.16, "frete": 23},
+    "Shopee": {"comissao": 0.14, "frete": 0},
+    "Amazon": {"comissao": 0.15, "frete": 23}
+}
+
+# =========================
+# CSS DASHBOARD
+# =========================
 st.markdown("""
 <style>
-html, body, [class*="css"]  {
-    font-family: 'Inter', sans-serif;
-    background-color: #f4f6f9;
+
+.card {
+    padding: 18px;
+    border-radius: 14px;
+    margin-bottom: 15px;
+    background-color: var(--background-color);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 
-.kpi-card {
-    background-color: white;
-    padding: 18px;
-    border-radius: 12px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-    border: 1px solid #e6e9ef;
+.card-green { border-left: 6px solid #16a34a; }
+.card-yellow { border-left: 6px solid #facc15; }
+.card-red { border-left: 6px solid #dc2626; }
+
+.kpi-title {
+    font-size: 14px;
+    opacity: 0.7;
 }
+
+.kpi-value {
+    font-size: 22px;
+    font-weight: bold;
+}
+
+.kpi-sub {
+    font-size: 13px;
+    opacity: 0.6;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
-# =====================================================
-# CONFIGURAÇÕES DE NEGÓCIO
-# =====================================================
+# =========================
+# TÍTULO
+# =========================
+st.title("📊 Simulador Inteligente de Margem")
 
-ARQUIVO_DADOS = "dados.txt"
-PEDIDOS_MES = 10000
-
-CANAIS = {
-    "FABI": {"comissao": 0.015, "frete": 0, "armazenagem": 0.018},
-    "Amazon": {"comissao": 0.15, "frete": 23},
-    "Americanas": {"comissao": 0.17, "frete": 0.08},
-    "Magalu": {"comissao": 0.148, "frete": 0.08},
-    "Mercado Livre": {"comissao": 0.17, "frete": 23},
-    "Olist": {"comissao": 0.19, "frete": 0.11},
-    "Shopee": {"comissao": 0.14, "frete": 0},
-}
-
-CUSTOS_FIXOS_MENSAIS = 382 + 660 + 349 + 1945.38 + 17560 + 17000
-CUSTO_SITE_FIXO_MENSAL = 5000
-CUSTO_FIXO_UNITARIO = (CUSTOS_FIXOS_MENSAIS + CUSTO_SITE_FIXO_MENSAL) / PEDIDOS_MES
-CUSTO_OPERACIONAL_PEDIDO = 2.625
-
-IMPOSTOS_TOTAL = 0.0125 + 0.0655 + 0.0925
-
-# =====================================================
-# CARREGAMENTO
-# =====================================================
-
-@st.cache_data
-def carregar():
-    if not os.path.exists(ARQUIVO_DADOS):
-        return pd.DataFrame(columns=["Material","DescricaoCompleta","quantidade","custoMedio","Marca"])
-    df = pd.read_csv(ARQUIVO_DADOS, sep="\t")
-    df["quantidade"] = pd.to_numeric(df["quantidade"], errors="coerce").fillna(0)
-    df["custoMedio"] = pd.to_numeric(df["custoMedio"], errors="coerce").fillna(0)
-    return df
-
-df = carregar()
-
-# =====================================================
-# HEADER KPI
-# =====================================================
-
-st.title("📊 Dashboard de Precificação")
-
-if df.empty:
-    st.warning("Sem dados.")
-    st.stop()
-
-sku = st.selectbox("Selecionar SKU", df["Material"])
-produto = df[df["Material"] == sku].iloc[0]
-
-custo = float(produto["custoMedio"])
-estoque = int(produto["quantidade"])
-marca = produto.get("Marca", "Não informada")
-
-preco_simulado = st.number_input(
-    "Preço de Venda Simulado",
-    min_value=0.01,
-    value=custo * 2,
-    step=0.01
-)
-
-# =====================================================
-# KPI SUPERIOR
-# =====================================================
-
+# =========================
+# FILTROS DE BUSCA
+# =========================
 col1, col2, col3, col4 = st.columns(4)
 
-col1.metric("Custo Produto", f"R$ {custo:,.2f}")
-col2.metric("Estoque", f"{estoque} un")
-col3.metric("Custo Fixo Unit.", f"R$ {CUSTO_FIXO_UNITARIO:,.2f}")
-col4.metric("Preço Simulado", f"R$ {preco_simulado:,.2f}")
+with col1:
+    busca_sku = st.text_input("🔎 Procurar SKU")
 
-st.markdown("---")
+with col2:
+    busca_nome = st.text_input("🔎 Procurar Nome")
 
-# =====================================================
-# MARKETPLACES EM GRID ORGANIZADO
-# =====================================================
+with col3:
+    preco_simulado = st.number_input("💰 Preço de Venda Simulado", value=100.0)
 
-st.subheader("Rentabilidade por Canal")
+with col4:
+    percentual_simulado = st.number_input("% Venda Simulado (desconto)", value=0.0)
 
-grid = st.columns(3)
+margem_desejada = st.number_input("🎯 Margem Desejada (%)", value=5.0)
 
-for i, (nome, dados) in enumerate(CANAIS.items()):
-    with grid[i % 3]:
+# =========================
+# FILTRAGEM
+# =========================
+produtos_filtrados = []
 
-        taxa_extra = 0
-        frete = 0
+for p in produtos:
+    if busca_sku and busca_sku.lower() not in p["sku"].lower():
+        continue
+    if busca_nome and busca_nome.lower() not in p["nome"].lower():
+        continue
+    produtos_filtrados.append(p)
 
-        # Mercado Livre
-        if nome == "Mercado Livre":
-            tipo = st.selectbox(
-                f"Tipo ML",
-                ["Clássico 12%", "Premium 17%"],
-                key=f"ml_{i}"
-            )
-            comissao = preco_simulado * (0.12 if "Clássico" in tipo else 0.17)
-            if preco_simulado < 79:
-                taxa_extra = 6.75
-            frete = 23
+# =========================
+# LOOP PRODUTOS
+# =========================
+for produto in produtos_filtrados:
 
-        # Shopee
-        elif nome == "Shopee":
-            if preco_simulado <= 79.99:
-                comissao = preco_simulado * 0.20
-                taxa_extra = 4
-            elif preco_simulado <= 99.99:
-                comissao = preco_simulado * 0.14
-                taxa_extra = 16
+    st.markdown("---")
+    st.subheader(f"{produto['nome']} ({produto['sku']})")
+    st.caption(f"Marca: {produto['marca']} | Estoque: {produto['estoque']} unidades")
+
+    cols = st.columns(len(marketplaces))
+
+    for i, (nome, dados) in enumerate(marketplaces.items()):
+
+        with cols[i]:
+
+            # Aplicar desconto simulado
+            preco_venda = preco_simulado * (1 - percentual_simulado / 100)
+
+            taxa_extra = 0
+
+            # =========================
+            # REGRAS MARKETPLACE
+            # =========================
+
+            if nome == "Mercado Livre":
+                tipo_anuncio = st.selectbox(
+                    f"Tipo ML - {produto['sku']}",
+                    ["C - Classico", "P - Premium"],
+                    key=f"{produto['sku']}_ml"
+                )
+                comissao = preco_venda * (0.12 if tipo_anuncio.startswith("C") else 0.17)
+                if preco_venda < 79:
+                    taxa_extra = 6.75
+                frete = 23
+
+            elif nome == "Shopee":
+                if preco_venda <= 79.99:
+                    comissao = preco_venda * 0.20
+                    taxa_extra = 4
+                elif preco_venda <= 99.99:
+                    comissao = preco_venda * 0.14
+                    taxa_extra = 16
+                else:
+                    comissao = preco_venda * 0.14
+                    taxa_extra = 26
+                frete = 0
+
+            elif nome == "Amazon":
+                comissao = preco_venda * dados["comissao"]
+                frete = 23
+
             else:
-                comissao = preco_simulado * 0.14
-                taxa_extra = 26
-            frete = 0
+                comissao = preco_venda * dados["comissao"]
+                frete = preco_venda * dados["frete"]
 
-        # Outros
-        else:
-            comissao = preco_simulado * dados["comissao"]
-            frete = dados["frete"] if dados["frete"] >= 1 else preco_simulado * dados["frete"]
+            impostos = preco_venda * IMPOSTOS_TOTAL
+            armazenagem = preco_venda * ARMAZENAGEM
 
-        impostos = preco_simulado * IMPOSTOS_TOTAL
-        armazenagem = preco_simulado * dados.get("armazenagem", 0)
+            custo_total = (
+                produto["custo_produto"]
+                + comissao
+                + frete
+                + impostos
+                + armazenagem
+                + fixo_rateado
+                + custos_operacionais_pedido
+                + taxa_extra
+            )
 
-        custo_total = (
-            custo
-            + comissao
-            + frete
-            + impostos
-            + armazenagem
-            + CUSTO_FIXO_UNITARIO
-            + CUSTO_OPERACIONAL_PEDIDO
-            + taxa_extra
-        )
+            lucro = preco_venda - custo_total
+            margem = (lucro / preco_venda) * 100 if preco_venda > 0 else 0
 
-        lucro = preco_simulado - custo_total
-        margem = (lucro / preco_simulado) * 100
+            # =========================
+            # COR DA BORDA
+            # =========================
+            if margem > 5:
+                classe = "card-green"
+            elif margem > 0:
+                classe = "card-yellow"
+            else:
+                classe = "card-red"
 
-        # Card estilo executivo
-        st.markdown(f"""
-        <div class="kpi-card">
-            <h4>{nome}</h4>
-            <p><b>Margem:</b> {margem:.2f}%</p>
-            <p><b>Lucro:</b> R$ {lucro:,.2f}</p>
-        </div>
-        """, unsafe_allow_html=True)
+            # =========================
+            # CARD
+            # =========================
+            st.markdown(f"""
+            <div class="card {classe}">
+                <div class="kpi-title">{nome}</div>
+                <div class="kpi-value">{margem:.2f}%</div>
+                <div class="kpi-sub">Lucro: R$ {lucro:.2f}</div>
+                <div class="kpi-sub">Preço Final: R$ {preco_venda:.2f}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # =========================
+            # CÁLCULO EXPANDÍVEL
+            # =========================
+            with st.expander("Ver cálculo detalhado"):
+                st.write(f"""
+                **Preço Base:** R$ {preco_simulado:.2f}  
+                **Desconto Aplicado:** {percentual_simulado:.2f}%  
+                **Preço Final:** R$ {preco_venda:.2f}  
+                **Custo Produto:** R$ {produto['custo_produto']:.2f}  
+                **Comissão:** R$ {comissao:.2f}  
+                **Frete:** R$ {frete:.2f}  
+                **Impostos:** R$ {impostos:.2f}  
+                **Armazenagem:** R$ {armazenagem:.2f}  
+                **Taxa Extra:** R$ {taxa_extra:.2f}  
+                **Custos Fixos:** R$ {fixo_rateado + custos_operacionais_pedido:.2f}  
+                ---
+                **Custo Total:** R$ {custo_total:.2f}  
+                **Lucro Final:** R$ {lucro:.2f}  
+                """)
+
+if not produtos_filtrados:
+    st.warning("Nenhum produto encontrado.")
