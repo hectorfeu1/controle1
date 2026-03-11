@@ -1,168 +1,261 @@
 import streamlit as st
 import pandas as pd
+import io
 
 st.set_page_config(layout="wide")
 
-# =========================
-# CSS DARK BI
-# =========================
+# ==============================
+# CONFIGURAÇÕES GERAIS
+# ==============================
+
+NUM_PEDIDOS_MES = 10000
+
+CUSTO_SITE_FIXO_MENSAL = 5000.0
+CUSTOS_FIXOS_OPERACAO = 382 + 660 + 349 + 1945.38 + 17560 + 17000
+CUSTO_FIXO_UNITARIO = (CUSTOS_FIXOS_OPERACAO + CUSTO_SITE_FIXO_MENSAL) / NUM_PEDIDOS_MES
+
+CUSTOS_OPERACIONAIS_PEDIDO = 2.625
+
+COMISSAO_SITE = 0.015
+ARMAZENAGEM = 0.018
+
+ICMS = 0.0125
+DIFAL = 0.0655
+PIS_COFINS = 0.0925
+IMPOSTOS_TOTAL = ICMS + DIFAL + PIS_COFINS
+
+# ==============================
+# DESIGN EXECUTIVO
+# ==============================
+
 st.markdown("""
 <style>
-
-body {
-    background-color: #0e1117;
-}
-
-.main {
-    background-color: #0e1117;
-}
-
-.block-container {
-    padding-top: 2rem;
-}
-
+body {background-color: #0f172a;}
+.block-container {padding-top: 2rem;}
 .card {
-    background-color: #1c1f26;
-    padding: 25px;
+    background-color: #1e293b;
+    padding: 20px;
     border-radius: 14px;
-    border: 1px solid #2a2f3a;
-    box-shadow: 0px 4px 20px rgba(0,0,0,0.4);
-    margin-bottom: 20px;
+    border: 1px solid #334155;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+    text-align: center;
 }
-
-.title {
+.market-title {
+    font-weight: 600;
     font-size: 18px;
+    color: #f1f5f9;
+}
+.margin {
+    font-size: 24px;
     font-weight: bold;
-    color: white;
-    margin-bottom: 15px;
 }
-
-.kpi {
-    font-size: 28px;
-    font-weight: bold;
-    color: #00e676;
-}
-
-.label {
-    color: #9aa4b2;
-    font-size: 13px;
-}
-
+.negative {color: #ef4444;}
+.positive {color: #22c55e;}
 </style>
 """, unsafe_allow_html=True)
 
-# =========================
-# FUNÇÃO DE CARGA OTIMIZADA
-# =========================
-@st.cache_data
-def carregar_dados():
-    df = pd.read_csv("dados.txt", sep="\t")
-    return df
+st.title("Maquina de Precificação")
 
-df = carregar_dados()
+# ==============================
+# UPLOAD ARQUIVO
+# ==============================
 
-# =========================
-# SIDEBAR PRODUTO
-# =========================
-st.sidebar.header("📦 Seleção de Produto")
-
-produto = st.sidebar.selectbox(
-    "Escolha o Produto",
-    df["DescricaoCompleta"]
+uploaded_file = st.file_uploader(
+    "Upload arquivo TXT ou CSV",
+    type=["csv", "txt"]
 )
 
-dados_produto = df[df["DescricaoCompleta"] == produto].iloc[0]
+if uploaded_file:
 
-custo = float(dados_produto["custoMedio"])
+    def carregar_arquivo(file):
+        content = file.read()
 
-st.sidebar.markdown(f"**Custo Médio:** R$ {custo:.2f}")
-st.sidebar.markdown(f"**Estoque:** {int(dados_produto['quantidade'])}")
+        for enc in ["utf-8", "latin1", "cp1252"]:
+            try:
+                text = content.decode(enc)
+                break
+            except:
+                continue
 
-# =========================
-# FUNÇÃO CALCULO
-# =========================
-def calcular_preco(custo, margem, comissao, taxa_fixa):
-    return (custo + taxa_fixa) / (1 - (margem/100) - (comissao/100))
+        for sep in ["\t", ";", ","]:
+            try:
+                df = pd.read_csv(io.StringIO(text), sep=sep)
+                if len(df.columns) > 3:
+                    return df
+            except:
+                continue
 
-st.title("📊 Simulador BI de Precificação")
+        return None
 
-# =========================
-# MARKETPLACES GRID
-# =========================
-col1, col2, col3 = st.columns(3)
+    df = carregar_arquivo(uploaded_file)
 
-# -------- Mercado Livre --------
-with col1:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="title">🟡 Mercado Livre</div>', unsafe_allow_html=True)
+    if df is None:
+        st.error("❌ Não foi possível interpretar o arquivo.")
+        st.stop()
 
-    margem_ml = st.number_input("Margem %", value=30.0, key="ml_m")
-    comissao_ml = st.number_input("Comissão %", value=16.0, key="ml_c")
-    taxa_ml = st.number_input("Taxa Fixa", value=5.0, key="ml_t")
+    df.columns = df.columns.str.strip()
 
-    preco_ml = calcular_preco(custo, margem_ml, comissao_ml, taxa_ml)
+    # Renomeia seu padrão ERP automaticamente
+    if "Material" in df.columns:
+        df = df.rename(columns={
+            "Material": "sku",
+            "DescricaoCompleta": "nome",
+            "custoMedio": "custo_produto",
+            "quantidade": "estoque"
+        })
 
-    st.markdown('<div class="label">Preço Ideal</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="kpi">R$ {preco_ml:.2f}</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    df["custo_produto"] = pd.to_numeric(df["custo_produto"], errors="coerce")
+    df = df.dropna(subset=["custo_produto"])
 
-# -------- Shopee --------
-with col2:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="title">🟠 Shopee</div>', unsafe_allow_html=True)
+    st.success(f"✅ {len(df)} produtos carregados.")
 
-    margem_sh = st.number_input("Margem % ", value=35.0, key="sh_m")
-    comissao_sh = st.number_input("Comissão % ", value=20.0, key="sh_c")
-    taxa_sh = st.number_input("Taxa Fixa ", value=4.0, key="sh_t")
+    # ==============================
+    # SELEÇÃO PRODUTO
+    # ==============================
 
-    preco_sh = calcular_preco(custo, margem_sh, comissao_sh, taxa_sh)
+    sku = st.selectbox("Selecione o SKU", df["sku"].astype(str))
+    produto = df[df["sku"].astype(str) == sku].iloc[0]
 
-    st.markdown('<div class="label">Preço Ideal</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="kpi">R$ {preco_sh:.2f}</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    custo_produto = produto["custo_produto"]
 
-# -------- Amazon --------
-with col3:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="title">🔵 Amazon</div>', unsafe_allow_html=True)
+    st.markdown(f"### {produto['nome']}")
+    st.write(f"💰 Custo Produto: R$ {custo_produto:.2f}")
 
-    margem_am = st.number_input("Margem %  ", value=28.0, key="am_m")
-    comissao_am = st.number_input("Comissão %  ", value=15.0, key="am_c")
-    taxa_am = st.number_input("Taxa Fixa  ", value=6.0, key="am_t")
+    preco_venda = st.number_input(
+        "Digite o preço de venda (R$)",
+        min_value=0.01,
+        format="%.2f"
+    )
 
-    preco_am = calcular_preco(custo, margem_am, comissao_am, taxa_am)
+    # ==============================
+    # FUNÇÕES PADRONIZADAS
+    # ==============================
 
-    st.markdown('<div class="label">Preço Ideal</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="kpi">R$ {preco_am:.2f}</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    def calcular_margem(preco, custo_total):
+        lucro = preco - custo_total
+        return (lucro / preco) * 100
 
-st.markdown("---")
+    def custo_base(preco, comissao_percentual, frete_fixo=0, frete_percentual=0, taxa_extra=0):
+        percentual_total = comissao_percentual + IMPOSTOS_TOTAL + ARMAZENAGEM
+        return (
+            custo_produto
+            + preco * percentual_total
+            + frete_fixo
+            + preco * frete_percentual
+            + taxa_extra
+            + CUSTO_FIXO_UNITARIO
+            + CUSTOS_OPERACIONAIS_PEDIDO
+        )
 
-# =========================
-# LOJA FABI
-# =========================
-st.subheader("🏪 Loja FABI (Venda Direta)")
+    # ==============================
+    # RESULTADOS
+    # ==============================
 
-col1, col2 = st.columns([2,1])
+  
 
-with col1:
-    margem_fabi = st.number_input("Margem % Loja FABI", value=40.0)
+    st.markdown("## Margem por Canal")
 
-with col2:
-    preco_fabi = custo * (1 + margem_fabi/100)
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="label">Preço Final</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="kpi">R$ {preco_fabi:.2f}</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+# ==============================
+# CONFIGURAÇÕES EXTRAS
+# ==============================
 
-# =========================
-# COMPARATIVO FINAL
-# =========================
-st.markdown("## 📈 Comparativo Geral")
+tipo_ml = st.selectbox("Tipo de anúncio Mercado Livre", ["Classico", "Premium"])
 
-comparativo = pd.DataFrame({
-    "Marketplace": ["Mercado Livre", "Shopee", "Amazon", "Loja FABI"],
-    "Preço Sugerido": [preco_ml, preco_sh, preco_am, preco_fabi]
-})
+# ==============================
+# FUNÇÃO PADRÃO
+# ==============================
 
-st.dataframe(comparativo, use_container_width=True)
+def calcular_canal(nome, preco, comissao, frete_fixo=0, frete_percentual=0, taxa_extra=0):
+    percentual_total = comissao + IMPOSTOS_TOTAL + ARMAZENAGEM
+    custo_percentual = preco * percentual_total
+
+    custo_total = (
+        custo_produto
+        + custo_percentual
+        + frete_fixo
+        + preco * frete_percentual
+        + taxa_extra
+        + CUSTO_FIXO_UNITARIO
+        + CUSTOS_OPERACIONAIS_PEDIDO
+    )
+
+    lucro = preco - custo_total
+    margem = (lucro / preco) * 100
+
+    return margem, custo_total, lucro
+
+def card(nome, margem):
+    cor = "#22c55e" if margem >= 0 else "#ef4444"
+    st.markdown(f"""
+    <div class="card">
+        <div class="market-title">{nome}</div>
+        <div class="margin" style="color:{cor}">
+            {margem:.2f}%
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ==============================
+# CÁLCULOS
+# ==============================
+
+m_site, ct_site, l_site = calcular_canal("Site", preco_venda, COMISSAO_SITE)
+m_amazon, ct_amazon, l_amazon = calcular_canal("Amazon", preco_venda, 0.15, frete_fixo=23)
+m_magalu, ct_magalu, l_magalu = calcular_canal("Magalu", preco_venda, 0.15, frete_fixo=8)
+
+comissao_ml = 0.12 if tipo_ml == "Classico" else 0.17
+taxa_ml = 6.75 if preco_venda < 79 else 0
+m_ml, ct_ml, l_ml = calcular_canal("ML", preco_venda, comissao_ml, frete_fixo=23, taxa_extra=taxa_ml)
+
+# Shopee
+if preco_venda <= 79.99:
+    com_shopee = 0.20
+    taxa_shopee = 4
+elif preco_venda <= 99.99:
+    com_shopee = 0.14
+    taxa_shopee = 16
+elif preco_venda <= 199.99:
+    com_shopee = 0.14
+    taxa_shopee = 20
+else:
+    com_shopee = 0.14
+    taxa_shopee = 26
+
+m_shopee, ct_shopee, l_shopee = calcular_canal("Shopee", preco_venda, com_shopee, taxa_extra=taxa_shopee)
+
+# ==============================
+# LAYOUT ALINHADO
+# ==============================
+
+cols = st.columns(5)
+
+with cols[0]:
+    card("🏪 Site FABI", m_site)
+
+with cols[1]:
+    card("Amazon", m_amazon)
+
+with cols[2]:
+    card("Magalu", m_magalu)
+
+with cols[3]:
+    card("Mercado Livre", m_ml)
+
+with cols[4]:
+    card("Shopee", m_shopee)
+
+# ==============================
+# MEMÓRIA DE CÁLCULO
+# ==============================
+
+with st.expander("📋 Ver Memória de Cálculo"):
+
+    memoria = pd.DataFrame({
+        "Canal": ["Site FABI", "Amazon", "Magalu", "Mercado Livre", "Shopee"],
+        "Preço Venda": [preco_venda]*5,
+        "Custo Total": [ct_site, ct_amazon, ct_magalu, ct_ml, ct_shopee],
+        "Lucro": [l_site, l_amazon, l_magalu, l_ml, l_shopee],
+        "Margem (%)": [m_site, m_amazon, m_magalu, m_ml, m_shopee]
+    })
+
+    st.dataframe(memoria, use_container_width=True)
