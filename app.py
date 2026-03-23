@@ -1,261 +1,242 @@
 import streamlit as st
 import pandas as pd
-import io
 
-st.set_page_config(layout="wide")
+PEDIDOS_MES = 10000
 
-# ==============================
-# CONFIGURAÇÕES GERAIS
-# ==============================
+marketplaces = {
+    "Amazon": {"comissao": 0.12},
+    "Americanas": {"comissao": 0.17, "frete_percent": 0.08},
+    "Magalu": {"comissao": 0.148},
+    "Mercado Livre": {"comissao": 0.17},
+    "Olist": {"comissao": 0.19, "frete_percent": 0.11},
+    "Shopee": {"comissao": 0.14},
+}
 
-NUM_PEDIDOS_MES = 10000
-
-CUSTO_SITE_FIXO_MENSAL = 5000.0
-CUSTOS_FIXOS_OPERACAO = 382 + 660 + 349 + 1945.38 + 17560 + 17000
-CUSTO_FIXO_UNITARIO = (CUSTOS_FIXOS_OPERACAO + CUSTO_SITE_FIXO_MENSAL) / NUM_PEDIDOS_MES
-
-CUSTOS_OPERACIONAIS_PEDIDO = 2.625
-
-COMISSAO_SITE = 0.015
-ARMAZENAGEM = 0.018
+custos_fixos_mensais = 382 + 660 + 349 + 1945.38 + 17560 + 17000
+custos_operacionais_pedido = 2.625
 
 ICMS = 0.0125
 DIFAL = 0.0655
 PIS_COFINS = 0.0925
+ARMAZENAGEM = 0.018
+
 IMPOSTOS_TOTAL = ICMS + DIFAL + PIS_COFINS
 
-# ==============================
-# DESIGN EXECUTIVO
-# ==============================
+st.set_page_config(layout="wide")
 
-st.markdown("""
-<style>
-body {background-color: #0f172a;}
-.block-container {padding-top: 2rem;}
-.card {
-    background-color: #1e293b;
-    padding: 20px;
-    border-radius: 14px;
-    border: 1px solid #334155;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-    text-align: center;
-}
-.market-title {
-    font-weight: 600;
-    font-size: 18px;
-    color: #f1f5f9;
-}
-.margin {
-    font-size: 24px;
-    font-weight: bold;
-}
-.negative {color: #ef4444;}
-.positive {color: #22c55e;}
-</style>
-""", unsafe_allow_html=True)
+st.title("Calculadora de Margem - Fabricante Online")
+st.write("Envie um arquivo com colunas: sku, nome, custo_produto")
 
-st.title("Maquina de Precificação")
+uploaded_file = st.file_uploader("Upload arquivo", type=["csv","txt"])
 
-# ==============================
-# UPLOAD ARQUIVO
-# ==============================
+if uploaded_file is not None:
 
-uploaded_file = st.file_uploader(
-    "Upload arquivo TXT ou CSV",
-    type=["csv", "txt"]
-)
+    try:
+        try:
+            df = pd.read_csv(uploaded_file, sep="\t", encoding="latin-1")
+        except:
+            df = pd.read_csv(uploaded_file, sep=",", encoding="latin-1")
 
-if uploaded_file:
+        df.columns = df.columns.str.strip().str.lower()
 
-    def carregar_arquivo(file):
-        content = file.read()
+        if not all(c in df.columns for c in ["sku","nome","custo_produto"]):
+            st.error("Arquivo precisa ter sku, nome, custo_produto")
+            st.stop()
 
-        for enc in ["utf-8", "latin1", "cp1252"]:
-            try:
-                text = content.decode(enc)
-                break
-            except:
-                continue
+        df["custo_produto"] = df["custo_produto"].astype(float)
 
-        for sep in ["\t", ";", ","]:
-            try:
-                df = pd.read_csv(io.StringIO(text), sep=sep)
-                if len(df.columns) > 3:
-                    return df
-            except:
-                continue
+        st.success(f"{len(df)} produtos carregados")
 
-        return None
-
-    df = carregar_arquivo(uploaded_file)
-
-    if df is None:
-        st.error("❌ Não foi possível interpretar o arquivo.")
+    except Exception as e:
+        st.error(e)
         st.stop()
 
-    df.columns = df.columns.str.strip()
+    sku = st.text_input("Digite o SKU")
 
-    # Renomeia seu padrão ERP automaticamente
-    if "Material" in df.columns:
-        df = df.rename(columns={
-            "Material": "sku",
-            "DescricaoCompleta": "nome",
-            "custoMedio": "custo_produto",
-            "quantidade": "estoque"
-        })
+    if sku:
 
-    df["custo_produto"] = pd.to_numeric(df["custo_produto"], errors="coerce")
-    df = df.dropna(subset=["custo_produto"])
+        prod = df[df["sku"].astype(str) == sku]
 
-    st.success(f"✅ {len(df)} produtos carregados.")
+        if prod.empty:
+            st.warning("SKU não encontrado")
+            st.stop()
 
-    # ==============================
-    # SELEÇÃO PRODUTO
-    # ==============================
+        prod = prod.iloc[0]
 
-    sku = st.selectbox("Selecione o SKU", df["sku"].astype(str))
-    produto = df[df["sku"].astype(str) == sku].iloc[0]
+        st.subheader(prod["nome"])
+        st.write(f"Custo: R$ {prod['custo_produto']:.2f}")
 
-    custo_produto = produto["custo_produto"]
+        preco = st.number_input("Preço de venda",0.01,step=0.01)
 
-    st.markdown(f"### {produto['nome']}")
-    st.write(f"💰 Custo Produto: R$ {custo_produto:.2f}")
+        st.subheader("Simulação de desconto")
 
-    preco_venda = st.number_input(
-        "Digite o preço de venda (R$)",
-        min_value=0.01,
-        format="%.2f"
-    )
+        c1,c2,c3 = st.columns(3)
 
-    # ==============================
-    # FUNÇÕES PADRONIZADAS
-    # ==============================
+        with c1:
+            desconto = st.number_input("Desconto %",0.0,90.0,0.0)
 
-    def calcular_margem(preco, custo_total):
-        lucro = preco - custo_total
-        return (lucro / preco) * 100
+        with c2:
+            desc_voce = st.number_input("% pago por você",0.0,100.0,100.0)
 
-    def custo_base(preco, comissao_percentual, frete_fixo=0, frete_percentual=0, taxa_extra=0):
-        percentual_total = comissao_percentual + IMPOSTOS_TOTAL + ARMAZENAGEM
-        return (
-            custo_produto
-            + preco * percentual_total
-            + frete_fixo
-            + preco * frete_percentual
-            + taxa_extra
-            + CUSTO_FIXO_UNITARIO
-            + CUSTOS_OPERACIONAIS_PEDIDO
-        )
+        with c3:
+            rebate = st.number_input("% pago pelo canal",0.0,100.0,0.0)
 
-    # ==============================
-    # RESULTADOS
-    # ==============================
+        desconto /= 100
+        desc_voce /= 100
+        rebate /= 100
 
-  
+        tipo_ml = st.selectbox("Tipo anúncio ML",["Classico","Premium"])
 
-    st.markdown("## Margem por Canal")
+        if preco > 0:
 
-# ==============================
-# CONFIGURAÇÕES EXTRAS
-# ==============================
+            preco_desc = preco * (1 - desconto)
+            valor_desc = preco - preco_desc
 
-tipo_ml = st.selectbox("Tipo de anúncio Mercado Livre", ["Classico", "Premium"])
+            parte_voce = valor_desc * desc_voce
+            parte_canal = valor_desc * rebate
 
-# ==============================
-# FUNÇÃO PADRÃO
-# ==============================
+            receita = preco_desc + parte_canal
 
-def calcular_canal(nome, preco, comissao, frete_fixo=0, frete_percentual=0, taxa_extra=0):
-    percentual_total = comissao + IMPOSTOS_TOTAL + ARMAZENAGEM
-    custo_percentual = preco * percentual_total
+            st.info(f"""
+Preço original: R$ {preco:.2f}
 
-    custo_total = (
-        custo_produto
-        + custo_percentual
-        + frete_fixo
-        + preco * frete_percentual
-        + taxa_extra
-        + CUSTO_FIXO_UNITARIO
-        + CUSTOS_OPERACIONAIS_PEDIDO
-    )
+Preço com desconto: R$ {preco_desc:.2f}
 
-    lucro = preco - custo_total
-    margem = (lucro / preco) * 100
+Desconto total: R$ {valor_desc:.2f}
 
-    return margem, custo_total, lucro
+Parte paga por você: R$ {parte_voce:.2f}
 
-def card(nome, margem):
-    cor = "#22c55e" if margem >= 0 else "#ef4444"
-    st.markdown(f"""
-    <div class="card">
-        <div class="market-title">{nome}</div>
-        <div class="margin" style="color:{cor}">
-            {margem:.2f}%
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+Rebate canal: R$ {parte_canal:.2f}
 
-# ==============================
-# CÁLCULOS
-# ==============================
+Receita final: R$ {receita:.2f}
+""")
 
-m_site, ct_site, l_site = calcular_canal("Site", preco_venda, COMISSAO_SITE)
-m_amazon, ct_amazon, l_amazon = calcular_canal("Amazon", preco_venda, 0.15, frete_fixo=23)
-m_magalu, ct_magalu, l_magalu = calcular_canal("Magalu", preco_venda, 0.15, frete_fixo=8)
+            fixo = custos_fixos_mensais / PEDIDOS_MES
 
-comissao_ml = 0.12 if tipo_ml == "Classico" else 0.17
-taxa_ml = 6.75 if preco_venda < 79 else 0
-m_ml, ct_ml, l_ml = calcular_canal("ML", preco_venda, comissao_ml, frete_fixo=23, taxa_extra=taxa_ml)
+            resultados = []
 
-# Shopee
-if preco_venda <= 79.99:
-    com_shopee = 0.20
-    taxa_shopee = 4
-elif preco_venda <= 99.99:
-    com_shopee = 0.14
-    taxa_shopee = 16
-elif preco_venda <= 199.99:
-    com_shopee = 0.14
-    taxa_shopee = 20
-else:
-    com_shopee = 0.14
-    taxa_shopee = 26
+            for nome,dados in marketplaces.items():
 
-m_shopee, ct_shopee, l_shopee = calcular_canal("Shopee", preco_venda, com_shopee, taxa_extra=taxa_shopee)
+                taxa_extra = 0
+                frete_percent = 0
+                comissao_percent = dados["comissao"]
 
-# ==============================
-# LAYOUT ALINHADO
-# ==============================
+                if nome == "Mercado Livre":
 
-cols = st.columns(5)
+                    comissao_percent = 0.12 if tipo_ml=="Classico" else 0.17
+                    frete = 23
 
-with cols[0]:
-    card("🏪 Site FABI", m_site)
+                    if receita < 79:
+                        taxa_extra = 6.75
 
-with cols[1]:
-    card("Amazon", m_amazon)
+                elif nome == "Shopee":
 
-with cols[2]:
-    card("Magalu", m_magalu)
+                    if receita <= 79.99:
+                        comissao_percent = 0.20
+                        taxa_extra = 4
+                    elif receita <= 99.99:
+                        comissao_percent = 0.14
+                        taxa_extra = 16
+                    elif receita <= 199.99:
+                        comissao_percent = 0.14
+                        taxa_extra = 20
+                    else:
+                        comissao_percent = 0.14
+                        taxa_extra = 26
 
-with cols[3]:
-    card("Mercado Livre", m_ml)
+                    frete = 0
 
-with cols[4]:
-    card("Shopee", m_shopee)
+                elif nome == "Amazon":
 
-# ==============================
-# MEMÓRIA DE CÁLCULO
-# ==============================
+                    # REGRA AJUSTADA AQUI
+                    if preco_desc < 79:
+                        frete = 6.50
+                    else:
+                        frete = 21.90
 
-with st.expander("📋 Ver Memória de Cálculo"):
+                elif nome == "Magalu":
 
-    memoria = pd.DataFrame({
-        "Canal": ["Site FABI", "Amazon", "Magalu", "Mercado Livre", "Shopee"],
-        "Preço Venda": [preco_venda]*5,
-        "Custo Total": [ct_site, ct_amazon, ct_magalu, ct_ml, ct_shopee],
-        "Lucro": [l_site, l_amazon, l_magalu, l_ml, l_shopee],
-        "Margem (%)": [m_site, m_amazon, m_magalu, m_ml, m_shopee]
-    })
+                    frete = 12
 
-    st.dataframe(memoria, use_container_width=True)
+                else:
+
+                    frete_percent = dados.get("frete_percent",0)
+                    frete = receita * frete_percent
+
+                comissao = receita * comissao_percent
+
+                impostos = receita * IMPOSTOS_TOTAL
+                armazenagem = receita * ARMAZENAGEM
+
+                custo_total = (
+                    prod["custo_produto"] +
+                    comissao +
+                    frete +
+                    impostos +
+                    armazenagem +
+                    fixo +
+                    custos_operacionais_pedido +
+                    taxa_extra
+                )
+
+                lucro = receita - custo_total
+                margem = (lucro/receita)*100 if receita>0 else 0
+
+                percentual_total = (
+                    comissao_percent +
+                    IMPOSTOS_TOTAL +
+                    ARMAZENAGEM +
+                    frete_percent
+                )
+
+                custo_fixo = (
+                    prod["custo_produto"] +
+                    frete +
+                    fixo +
+                    custos_operacionais_pedido +
+                    taxa_extra
+                )
+
+                if percentual_total < 1:
+                    preco_min = custo_fixo / (1 - percentual_total)
+                else:
+                    preco_min = 0
+
+                resultados.append((nome,lucro,margem,preco_min))
+
+            cols = st.columns(6)
+
+            for i,r in enumerate(resultados):
+
+                nome,lucro,margem,preco_min = r
+
+                if margem < 2:
+                    cor = "#ff4b4b"
+                elif margem <=5:
+                    cor = "#f0ad4e"
+                else:
+                    cor = "#28a745"
+
+                with cols[i]:
+
+                    st.markdown(f"""
+<div style="
+border:2px solid {cor};
+padding:8px;
+border-radius:8px;
+text-align:center;
+font-size:14px">
+
+<b>{nome}</b><br>
+
+Lucro<br>
+<b>R$ {lucro:.2f}</b><br>
+
+Margem<br>
+<b>{margem:.1f}%</b><br>
+
+Preço 0%<br>
+<b>R$ {preco_min:.2f}</b>
+
+</div>
+""",unsafe_allow_html=True)
